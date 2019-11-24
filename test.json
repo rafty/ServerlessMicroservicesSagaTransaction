@@ -1,0 +1,28 @@
+{
+  "Comment": "e-commerce Saga Transaction",
+  "StartAt": "OrderCreate",
+  "TimeoutSeconds": 15,
+  "States": {
+    "OrderCreate": {
+      "Comment": "Order Create",
+      "Type": "Task",
+      "Resource": "${OrderCreateFunction.Arn}",
+      "Next": "PaymentDebit"
+    },
+    "PaymentDebit": {
+      "Comment": "Payment Debit",
+      "Type": "Task",
+      "Resource": "${PaymentDebitFunction.Arn}",
+      "Next": "InventoryReserve"
+    },
+    "InventoryReserve": {
+      "Comment": "Inventory Reserve",
+      "Type": "Task",
+      "Resource": "${InventoryReserveFunction.Arn}",
+      "Next": "OrderSucceeded"
+    },
+    "OrderSucceeded": {
+      "Type": "Succeed"
+    }
+  }
+}

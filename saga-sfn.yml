@@ -1,0 +1,782 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  AutoScaling Lifecycle Hooks
+
+
+Parameters:
+  NotifyEmail:
+    Description: EMail address to notify if there are any scaling operations
+    Type: String
+    AllowedPattern: >-
+      ([a-zA-Z0-9_\-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)|(([a-zA-Z0-9\-]+\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\]?)
+    ConstraintDescription: must be a valid email address.
+
+
+Resources:
+
+# ---------------------------------------------------------------
+#  AWS Lambda
+# ---------------------------------------------------------------
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lambda_role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+
+  LambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: lambda_policy
+      Roles:
+        - !Ref LambdaRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - cloudwatch:*
+              - logs:*
+              - ses:*
+              - dynamodb:*
+              - states:*
+              - apigateway:*
+            Effect: Allow
+            Resource:
+              - '*'
+
+  LambdaLayerSaga:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: Saga-Lambda-Layer
+      Description: Common Application Resource layer
+      ContentUri: lambda/layer
+
+
+  OrderCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: OrderCreateFunction
+      Description: OrderCreateFunction
+      Timeout: 200
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: services/order/create/
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
+
+#  OrderApproveFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: OrderApproveFunction
+#      Description: OrderApproveFunction
+#      Timeout: 200
+#      Handler: lambda_function.lambda_handler
+#      Runtime: python3.7
+#      Role: !GetAtt LambdaRole.Arn
+#      CodeUri: services/order/approve/
+#      Tracing: Active
+#      Layers: !Ref LambdaLayerSaga
+#
+#  OrderRejectFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: OrderRejectFunction
+#      Description: OrderRejectFunction
+#      Timeout: 200
+#      Handler: lambda_function.lambda_handler
+#      Runtime: python3.7
+#      Role: !GetAtt LambdaRole.Arn
+#      CodeUri: services/order/reject/
+#      Tracing: Active
+#      Layers: !Ref LambdaLayerSaga
+#
+#
+##  OrderNotifyFunction:
+##    Type: AWS::Serverless::Function
+##    Properties:
+##      FunctionName: OrderNotifyFunction
+##      Description: OrderNotifyFunction
+##      Timeout: 200
+##      Handler: lambda_function.lambda_handler
+##      Runtime: python3.7
+##      Role: !GetAtt LambdaRole.Arn
+##      CodeUri: services/order/x-notify/
+##      Tracing: Active
+##      Layers:
+##        - Fn::ImportValue: aws-lambda-layer-common-arn
+
+  PaymentDebitFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PaymentDebitFunction
+      Description: PaymentDebitFunction
+      Timeout: 200
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: services/payment/debit/
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
+
+#  myPaymentCreditFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: myPaymentCreditFunction
+#      Description: myPaymentCreditFunction
+#      Timeout: 200
+#      Handler: lambda_function.lambda_handler
+#      Runtime: python3.7
+#      Role: !GetAtt LambdaRole.Arn
+#      CodeUri: services/payment/credit/
+#      Tracing: Active
+#      Layers:
+#        - Fn::ImportValue: aws-lambda-layer-common-arn
+
+  InventoryReserveFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: InventoryReserveFunction
+      Description: InventoryReserveFunction
+      Timeout: 200
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: services/inventory/reserve/
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
+
+#  myInventoryReleaseFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: myInventoryReleaseFunction
+#      Description: myInventoryReleaseFunction
+#      Timeout: 200
+#      Handler: lambda_function.lambda_handler
+#      Runtime: python3.7
+#      Role: !GetAtt LambdaRole.Arn
+#      CodeUri: services/inventory/release/
+#      Tracing: Active
+#      Layers:
+#        - Fn::ImportValue: aws-lambda-layer-common-arn
+#
+#
+#
+#  TestSfnFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: TestSfnFunction
+#      Description: TestSfnFunction
+#      Timeout: 300
+#      Handler: test.lambda_handler
+#      Runtime: python3.7
+#      Role: !GetAtt LambdaRole.Arn
+#      CodeUri: test/lambda/
+#      Tracing: Active
+#      Layers: !Ref LambdaLayerSaga
+#
+
+
+
+# ---------------------------------------------------------------
+#  Amazon DynamoDB
+# ---------------------------------------------------------------
+
+  OrderTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Order
+        AttributeDefinitions:
+        - AttributeName: order_id
+          AttributeType: S
+        KeySchema:
+        - AttributeName: order_id
+          KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+
+
+  PaymentTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Payment
+        AttributeDefinitions:
+        - AttributeName: transaction_id
+          AttributeType: S
+        - AttributeName: order_id
+          AttributeType: S
+        - AttributeName: transaction_type
+          AttributeType: S
+        KeySchema:
+        - AttributeName: transaction_id
+          KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        GlobalSecondaryIndexes:
+        - IndexName: order_id_index
+          KeySchema:
+          - AttributeName: order_id
+            KeyType: HASH
+          - AttributeName: transaction_type
+            KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+
+
+  InventoryTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Inventory
+        AttributeDefinitions:
+          - AttributeName: transaction_id
+            AttributeType: S
+          - AttributeName: order_id
+            AttributeType: S
+          - AttributeName: transaction_type
+            AttributeType: S
+        KeySchema:
+          - AttributeName: transaction_id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        GlobalSecondaryIndexes:
+          - IndexName: order_id_index
+            KeySchema:
+              - AttributeName: order_id
+                KeyType: HASH
+              - AttributeName: transaction_type
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+
+# ---------------------------------------------------------------
+#  AWS SNS
+# ---------------------------------------------------------------
+
+
+  SagaTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: SagaTopic
+      DisplayName: SagaTopic
+      Subscription:
+        - Endpoint: !Ref NotifyEmail
+          Protocol: email
+#        - Endpoint: !GetAtt SagaQueue.Arn
+#          Protocol: sqs
+#        - Endpoint: !GetAtt OrderNotifyFunction.Arn
+#          Protocol: services
+#
+##  OrderNotifyLambdaPermission:
+##    Type: AWS::Lambda::Permission
+##    Properties:
+##      Principal: sns.amazonaws.com
+##      SourceArn: !Ref SagaTopic
+##      Action: services:InvokeFunction
+##      FunctionName: !GetAtt OrderNotifyFunction.Arn
+
+#  ________  ________   ________
+# |\   ____\|\   __  \ |\   ____\
+# \ \  \___|\ \  \|\  \\ \  \___|_
+#  \ \_____  \ \  \\\  \\ \_____  \
+#   \|____|\  \ \  \\\  \\|____|\  \
+#     ____\_\  \ \_____  \ ____\_\  \
+#    |\_________\|___| \__\\_________\
+#    \|_________|     \|__\|_________|
+
+
+#  SagaQueuePolicy:
+#    Type: AWS::SQS::QueuePolicy
+#    Properties:
+#      Queues:
+#        - !Ref SagaQueue
+#      PolicyDocument:
+#        Version: 2012-10-17
+#        Statement:
+#          - Sid: AllowSendMessage
+#            Effect: Allow
+#            Principal:
+#              AWS: "*"
+#            Action:
+#            - sqs:SendMessage
+#            Resource: !GetAtt SagaQueue.Arn
+#            Condition:
+#              ArnEquals:
+#                'aws:SourceArn': !Ref SagaTopic
+
+#  SagaQueue:
+#    Type: AWS::SQS::Queue
+#    Properties:
+#      QueueName: SagaQueue
+#      Tags:
+#        - Key: project
+#          Value: e-commerce
+#        - Key: role
+#          Value: Payment
+#        - Key: environment
+#          Value: dev
+
+
+# ---------------------------------------------------------------
+#  AWS Stepfunctions
+# ---------------------------------------------------------------
+
+  StepFunctionsServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowStepFunctionsServiceToAssumeRole
+            Effect: Allow
+            Principal:
+                Service:
+                    - !Sub states.${AWS::Region}.amazonaws.com
+            Action:
+                - sts:AssumeRole
+      Path: !Join ["", ["/", !Ref "AWS::StackName", "/"]]
+      ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess
+      Policies:
+        - PolicyName: CallLambdaFunctions
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !GetAtt OrderCreateFunction.Arn
+#                - !GetAtt myOrderApproveFunction.Arn
+#                - !GetAtt myOrderFailFunction.Arn
+                - !GetAtt PaymentDebitFunction.Arn
+#                - !GetAtt myPaymentCreditFunction.Arn
+                - !GetAtt InventoryReserveFunction.Arn
+#                - !GetAtt myInventoryReleaseFunction.Arn
+        - PolicyName: SnsServiceIntegration
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource:
+                - !Ref SagaTopic
+#        - PolicyName: SqsServiceIntegration
+#          PolicyDocument:
+#            Version: 2012-10-17
+#            Statement:
+#            - Effect: Allow
+#              Action:
+#                - sqs:SendMessage
+#              Resource:
+#                - !GetAtt SagaQueue.Arn
+
+
+  SagaStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+          StateMachineName: !Ref AWS::StackName
+          RoleArn: !GetAtt StepFunctionsServiceRole.Arn
+          DefinitionString: !Sub |-
+            {
+              "Comment": "e-commerce Saga Transaction",
+              "StartAt": "OrderCreate",
+              "TimeoutSeconds": 15,
+              "States": {
+                "OrderCreate": {
+                  "Comment": "Order Create",
+                  "Type": "Task",
+                  "Resource": "${OrderCreateFunction.Arn}",
+                  "Next": "PaymentDebit"
+                },
+                "PaymentDebit": {
+                  "Comment": "Payment Debit",
+                  "Type": "Task",
+                  "Resource": "${PaymentDebitFunction.Arn}",
+                  "Next": "InventoryReserve"
+                },
+                "InventoryReserve": {
+                  "Comment": "Inventory Reserve",
+                  "Type": "Task",
+                  "Resource": "${InventoryReserveFunction.Arn}",
+                  "Next": "OrderSucceeded"
+                },
+                "OrderSucceeded": {
+                  "Type": "Succeed"
+                }
+              }
+            }
+
+
+#  SagaStateMachine:
+#        Type: AWS::StepFunctions::StateMachine
+#        Properties:
+#          StateMachineName: !Ref AWS::StackName
+#          RoleArn: !GetAtt StepFunctionsServiceRole.Arn
+#          DefinitionString: !Sub |-
+#            {
+#              "Comment": "e-commerce Saga Transaction",
+#              "StartAt": "OrderPlace",
+#              "TimeoutSeconds": 15,
+#              "States": {
+#                "OrderPlace": {
+#                  "Comment": "set the order status to place",
+#                  "Type": "Task",
+#                  "Resource": "${myOrderPlaceFunction.Arn}",
+#                  "Catch": [
+#                    {
+#                      "ErrorEquals": ["AlreadyRunning"],
+#                      "ResultPath": "$.error",
+#                      "Next": "OrderSucceeded"
+#                    },
+#                    {
+#                      "ErrorEquals": ["ErrorOrderProcess"],
+#                      "ResultPath": "$.error",
+#                      "Next": "OrderFail"
+#                    }
+#                  ],
+#                  "Next": "PaymentDebit"
+#                },
+#                "PaymentDebit": {
+#                  "Comment": "Task processes the payment debit",
+#                  "Type": "Task",
+#                  "Resource": "${myPaymentDebitFunction.Arn}",
+#                  "Catch": [
+#                    {
+#                      "ErrorEquals": ["DebitLimitExceeded"],
+#                      "ResultPath": "$.error",
+#                      "Next": "OrderFail"
+#                    },
+#                    {
+#                      "ErrorEquals": ["ErrorPaymentDebit"],
+#                      "ResultPath": "$.error",
+#                      "Next": "PaymentCredit"
+#                    }
+#                  ],
+#                  "Next": "InventoryReserve"
+#                },
+#                "InventoryReserve": {
+#                  "Comment": "Task to reserve order items in inventory",
+#                  "Type": "Task",
+#                  "Resource": "${myInventoryReserveFunction.Arn}",
+#                  "Catch": [
+#                    {
+#                      "ErrorEquals": ["InventoryRanShort"],
+#                      "ResultPath": "$.error",
+#                      "Next": "PaymentCredit"
+#                    },
+#                    {
+#                      "ErrorEquals": ["ErrorInventoryReserve"],
+#                      "ResultPath": "$.error",
+#                      "Next": "InventoryRelease"
+#                    }
+#                  ],
+#                  "Next": "OrderApprove"
+#                },
+#                "OrderApprove": {
+#                  "Comment": "Task to approve order",
+#                  "Type": "Task",
+#                  "Resource": "${myOrderApproveFunction.Arn}",
+#                  "Catch": [{
+#                    "ErrorEquals": ["ErrorOrderUpdateStatus"],
+#                    "ResultPath": "$.fail",
+#                    "Next": "sns:NotifyOrderApproveException"
+#                  }],
+#                  "Next": "sns:NotifyOrderSuccess"
+#                },
+#                "OrderSucceeded": {
+#                  "Type": "Succeed"
+#                },
+#                "InventoryRelease": {
+#                  "Comment": "Task to release order items back to inventory",
+#                  "Type": "Task",
+#                  "Resource": "${myInventoryReleaseFunction.Arn}",
+#                  "Retry": [{
+#                    "ErrorEquals": ["States.ALL"],
+#                    "IntervalSeconds": 1,
+#                    "MaxAttempts": 2,
+#                    "BackoffRate": 2.0
+#                  }],
+#                  "Catch": [{
+#                    "ErrorEquals": ["ErrorInventoryRelease"],
+#                    "ResultPath": "$.fail",
+#                    "Next": "sns:NotifyReleaseInventoryException"
+#                  }],
+#                  "Next": "PaymentCredit"
+#                },
+#                "PaymentCredit": {
+#                  "Comment": "Payment credit",
+#                  "Type": "Task",
+#                  "Resource": "${myPaymentCreditFunction.Arn}",
+#                  "Retry": [{
+#                    "ErrorEquals": ["States.TaskFailed"],
+#                    "IntervalSeconds": 1,
+#                    "MaxAttempts": 2,
+#                    "BackoffRate": 2.0
+#                  }],
+#                  "Catch": [{
+#                    "ErrorEquals": ["ErrorPaymentCredit", "ErrorPaymentException"],
+#                    "ResultPath": "$.fail",
+#                    "Next": "sns:NotifyCreditPaymentException"
+#                  }],
+#                  "Next": "OrderFail"
+#                },
+#                "OrderFail": {
+#                  "Comment": "Task to fail order",
+#                  "Type": "Task",
+#                  "Resource": "${myOrderFailFunction.Arn}",
+#                  "Retry": [{
+#                    "ErrorEquals": ["States.TaskFailed"],
+#                    "IntervalSeconds": 1,
+#                    "MaxAttempts": 2,
+#                    "BackoffRate": 2.0
+#                  }],
+#                  "Catch": [{
+#                    "ErrorEquals": ["ErrorOrderFailStatus"],
+#                    "ResultPath": "$.fail",
+#                    "Next": "sns:NotifyOrderFailException"
+#                  }],
+#                  "Next": "sns:NotifyOrderFail"
+#                },
+#                "OrderFailed": {
+#                  "Type": "Fail"
+#                },
+#                "sns:NotifyOrderSuccess": {
+#                  "Type": "Task",
+#                  "Resource": "arn:aws:states:::sns:publish",
+#                  "Parameters": {
+#                    "Message": { "order_id.$" : "$.order_id", "status.$" : "$.order_status"},
+#                    "TopicArn": "${SagaTopic}"
+#                  },
+#                  "ResultPath": "$.notification",
+#                  "Next": "OrderSucceeded"
+#                },
+#                "sns:NotifyOrderFail": {
+#                  "Type": "Task",
+#                  "Resource": "arn:aws:states:::sns:publish",
+#                  "Parameters": {
+#                    "Message": { "order_id.$" : "$.order_id", "status.$" : "$.order_status", "cause.$" : "$.cause" },
+#                    "TopicArn": "${SagaTopic}"
+#                  },
+#                  "ResultPath": "$.notification",
+#                  "Next": "OrderFailed"
+#                },
+## TODO NotifyXXXExceptionにはSNS通知した後SQSに入れる。これはDeadLetterQueueと同じように扱う
+#                "sns:NotifyOrderApproveException": {
+#                  "Type": "Task",
+#                  "Resource": "arn:aws:states:::sns:publish",
+#                  "Parameters": {
+#                    "Message": { "order_id.$" : "$.order_id", "fail.$" : "$.fail" },
+#                    "TopicArn": "${SagaTopic}"
+#                  },
+#                  "ResultPath": "$.notification",
+#                  "Next": "OrderFailed"
+#                },
+#                "sns:NotifyOrderFailException": {
+#                  "Type": "Task",
+#                  "Resource": "arn:aws:states:::sns:publish",
+#                  "Parameters": {
+#                    "Message": { "order_id.$" : "$.order_id", "error.$" : "$.error" },
+#                    "TopicArn": "${SagaTopic}"
+#                  },
+#                  "ResultPath": "$.notification",
+#                  "Next": "OrderFailed"
+#                },
+#                "sns:NotifyCreditPaymentException": {
+#                  "Type": "Task",
+#                  "Resource": "arn:aws:states:::sns:publish",
+#                  "Parameters": {
+#                    "Message.$": "$",
+#                    "TopicArn": "${SagaTopic}"
+#                  },
+#                  "ResultPath": "$.notification",
+#                  "Next": "OrderFailed"
+#                },
+#                "sns:NotifyReleaseInventoryException": {
+#                  "Type": "Task",
+#                  "Resource": "arn:aws:states:::sns:publish",
+#                  "Parameters": {
+#                    "Message.$": "$",
+#                    "TopicArn": "${SagaTopic}"
+#                  },
+#                  "ResultPath": "$.notification",
+#                  "Next": "OrderFailed"
+#                }
+#              }
+#            }
+#
+## TODO それぞれにCatchを入れること
+#
+##                "ProcessOrder": {
+##                  "Comment": "set the order status to place",
+##                  "Type": "Task",
+##                  "Resource": "${myOrderPlaceFunction.Arn}",
+##                  "Catch": [{
+##                    "ErrorEquals": ["ErrorOrderProcess"],
+##                    "ResultPath": "$.fail",
+##                    "Next": "UpdateOrderStatus"
+##                  }],
+##                  "Next": "OrderSucceeded"
+##                },
+##            {
+##              "Comment": "e-commerce Saga Transaction",
+##              "StartAt": "ProcessOrder",
+##              "TimeoutSeconds": 15,
+##              "States": {
+##                "ProcessOrder": {
+##                  "Comment": "First transaction to save the order and set the order status to place",
+##                  "Type": "Task",
+##                  "Resource": "${OrderNewFunction.Arn}",
+##                  "Catch": [{
+##                    "ErrorEquals": ["ErrorOrderProcess"],
+##                    "ResultPath": "$.fail",
+##                    "Next": "UpdateOrderStatus"
+##                  }],
+##                  "Next": "ProcessPayment"
+##                },
+##                "ProcessPayment": {
+##                  "Comment": "Task processes the order payment",
+##                  "Type": "Task",
+##                  "Resource": "${PaymentPayFunction.Arn}",
+##                  "Catch": [{
+##                    "ErrorEquals": ["ErrorPaymentPay"],
+##                    "ResultPath": "$.fail",
+##                    "Next": "ProcessRefund"
+##                  }],
+##                  "Next": "ReserveInventory"
+##                },
+##                "ReserveInventory": {
+##                  "Comment": "Task to reserve order items in inventory",
+##                  "Type": "Task",
+##                  "Resource": "${myInventoryReserveFunction.Arn}",
+##                  "Catch": [{
+##                    "ErrorEquals": ["ErrorInventoryReserve"],
+##                    "ResultPath": "$.fail",
+##                    "Next": "ReleaseInventory"
+##                  }],
+##                  "Next": "sns:NotifySuccess"
+##                },
+##                "sns:NotifySuccess": {
+##                  "Type": "Task",
+##                  "Resource": "arn:aws:states:::sns:publish",
+##                  "Parameters": {
+##                    "Message.$": "$",
+##                    "TopicArn": "${SagaTopic}"
+##                  },
+##                  "ResultPath": "$.notification",
+##                  "Next": "OrderSucceeded"
+##                },
+##                "OrderSucceeded": {
+##                  "Type": "Succeed"
+##                },
+##                "ReleaseInventory": {
+##                  "Comment": "Task to release order items back to inventory",
+##                  "Type": "Task",
+##                  "Resource": "${InventoryReleaseFunction.Arn}",
+##                  "Retry": [{
+##                    "ErrorEquals": ["States.ALL"],
+##                    "IntervalSeconds": 1,
+##                    "MaxAttempts": 2,
+##                    "BackoffRate": 2.0
+##                  }],
+##                  "Catch": [{
+##                    "ErrorEquals": ["ErrorInventoryRelease"],
+##                    "ResultPath": "$.fail",
+##                    "Next": "sns:NotifyReleaseInventoryFail"
+##                  }],
+##                  "Next": "ProcessRefund"
+##                },
+##                "sns:NotifyReleaseInventoryFail": {
+##                  "Type": "Task",
+##                  "Resource": "arn:aws:states:::sns:publish",
+##                  "Parameters": {
+##                    "Message.$": "$",
+##                    "TopicArn": "${SagaTopic}"
+##                  },
+##                  "ResultPath": "$.notification",
+##                  "Next": "OrderFailed"
+##                },
+##                "ProcessRefund": {
+##                  "Comment": "Task to process order credit",
+##                  "Type": "Task",
+##                  "Resource": "${PaymentRefundFunction.Arn}",
+##                  "Retry": [{
+##                    "ErrorEquals": ["States.TaskFailed"],
+##                    "IntervalSeconds": 1,
+##                    "MaxAttempts": 2,
+##                    "BackoffRate": 2.0
+##                  }],
+##                  "Catch": [{
+##                    "ErrorEquals": ["ErrorPaymentRefund"],
+##                    "ResultPath": "$.fail",
+##                    "Next": "sns:NotifyProcessRefundFail"
+##                  },
+##                  {
+##                     "ErrorEquals": ["ErrorPaymentException"],
+##                     "ResultPath": "$.fail",
+##                     "Next": "sns:NotifyProcessRefundFail"
+##                  }],
+##                  "Next": "UpdateOrderStatus"
+##                },
+##                "sns:NotifyProcessRefundFail": {
+##                  "Type": "Task",
+##                  "Resource": "arn:aws:states:::sns:publish",
+##                  "Parameters": {
+##                    "Message.$": "$",
+##                    "TopicArn": "${SagaTopic}"
+##                  },
+##                  "ResultPath": "$.notification",
+##                  "Next": "OrderFailed"
+##                },
+##                "UpdateOrderStatus": {
+##                  "Comment": "Task sets the order status to Pending.",
+##                  "Type": "Task",
+##                  "Resource": "${OrderUpdateFunction.Arn}",
+##                  "Catch": [{
+##                    "ErrorEquals": ["ErrorOrderUpdateStatus"],
+##                    "ResultPath": "$.fail",
+##                    "Next": "sns:NotifyUpdateOrderFail"
+##                  }],
+##                  "Next": "sns:NotifyUpdateOrderFail"
+##                },
+##                "sns:NotifyUpdateOrderFail": {
+##                  "Type": "Task",
+##                  "Resource": "arn:aws:states:::sns:publish",
+##                  "Parameters": {
+##                    "Message.$": "$",
+##                    "TopicArn": "${SagaTopic}"
+##                  },
+##                  "ResultPath": "$.notification",
+##                  "Next": "OrderFailed"
+##                },
+##                "OrderFailed": {
+##                  "Type": "Fail"
+##                }
+##              }
+##            }
+#
+

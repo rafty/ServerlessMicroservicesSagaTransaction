@@ -1,0 +1,189 @@
+{
+  "Comment": "e-commerce Saga Transaction",
+  "StartAt": "OrderPlace",
+  "TimeoutSeconds": 15,
+  "States": {
+    "OrderPlace": {
+      "Comment": "set the order status to place",
+      "Type": "Task",
+      "Resource": "${myOrderPlaceFunction.Arn}",
+      "Catch": [
+        {
+          "ErrorEquals": ["AlreadyRunning"],
+          "ResultPath": "$.error",
+          "Next": "OrderSucceeded"
+        },
+        {
+          "ErrorEquals": ["ErrorOrder"],
+          "ResultPath": "$.error",
+          "Next": "OrderReject"
+        }
+      ],
+      "Next": "PaymentDebit"
+    },
+    "PaymentDebit": {
+      "Comment": "Task processes the payment debit",
+      "Type": "Task",
+      "Resource": "${myPaymentDebitFunction.Arn}",
+      "Catch": [
+        {
+          "ErrorEquals": ["DebitLimitExceeded"],
+          "ResultPath": "$.error",
+          "Next": "OrderFail"
+        },
+        {
+          "ErrorEquals": ["ErrorPaymentDebit"],
+          "ResultPath": "$.error",
+          "Next": "PaymentCredit"
+        }
+      ],
+      "Next": "InventoryReserve"
+    },
+    "InventoryReserve": {
+      "Comment": "Task to reserve order items in inventory",
+      "Type": "Task",
+      "Resource": "${myInventoryReserveFunction.Arn}",
+      "Catch": [
+        {
+          "ErrorEquals": ["InventoryRanShort"],
+          "ResultPath": "$.error",
+          "Next": "PaymentCredit"
+        },
+        {
+          "ErrorEquals": ["ErrorInventoryReserve"],
+          "ResultPath": "$.error",
+          "Next": "InventoryRelease"
+        }
+      ],
+      "Next": "OrderApprove"
+    },
+    "OrderApprove": {
+      "Comment": "Task to approve order",
+      "Type": "Task",
+      "Resource": "${myOrderApproveFunction.Arn}",
+      "Catch": [{
+        "ErrorEquals": ["ErrorOrderUpdateStatus"],
+        "ResultPath": "$.fail",
+        "Next": "sns:NotifyOrderApproveException"
+      }],
+      "Next": "sns:NotifyOrderSuccess"
+    },
+    "OrderSucceeded": {
+      "Type": "Succeed"
+    },
+    "InventoryRelease": {
+      "Comment": "Task to release order items back to inventory",
+      "Type": "Task",
+      "Resource": "${myInventoryReleaseFunction.Arn}",
+      "Retry": [{
+        "ErrorEquals": ["States.ALL"],
+        "IntervalSeconds": 1,
+        "MaxAttempts": 2,
+        "BackoffRate": 2.0
+      }],
+      "Catch": [{
+        "ErrorEquals": ["ErrorInventoryRelease"],
+        "ResultPath": "$.fail",
+        "Next": "sns:NotifyReleaseInventoryException"
+      }],
+      "Next": "PaymentCredit"
+    },
+    "PaymentCredit": {
+      "Comment": "Payment credit",
+      "Type": "Task",
+      "Resource": "${myPaymentCreditFunction.Arn}",
+      "Retry": [{
+        "ErrorEquals": ["States.TaskFailed"],
+        "IntervalSeconds": 1,
+        "MaxAttempts": 2,
+        "BackoffRate": 2.0
+      }],
+      "Catch": [{
+        "ErrorEquals": ["ErrorPaymentCredit", "ErrorPaymentException"],
+        "ResultPath": "$.fail",
+        "Next": "sns:NotifyCreditPaymentException"
+      }],
+      "Next": "OrderFail"
+    },
+    "OrderReject": {
+      "Comment": "Task to fail order",
+      "Type": "Task",
+      "Resource": "${myOrderFailFunction.Arn}",
+      "Retry": [{
+        "ErrorEquals": ["States.TaskFailed"],
+        "IntervalSeconds": 1,
+        "MaxAttempts": 2,
+        "BackoffRate": 2.0
+      }],
+      "Catch": [{
+        "ErrorEquals": ["ErrorOrderFailStatus"],
+        "ResultPath": "$.fail",
+        "Next": "sns:NotifyOrderFailException"
+      }],
+      "Next": "sns:NotifyOrderFail"
+    },
+    "OrderFailed": {
+      "Type": "Fail"
+    },
+    "sns:NotifyOrderSuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "Message": { "order_id.$" : "$.order_id", "status.$" : "$.order_status"},
+        "TopicArn": "${mySagaTopic}"
+      },
+      "ResultPath": "$.notification",
+      "Next": "OrderSucceeded"
+    },
+    "sns:NotifyOrderFail": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "Message": { "order_id.$" : "$.order_id", "status.$" : "$.order_status", "cause.$" : "$.cause" },
+        "TopicArn": "${mySagaTopic}"
+      },
+      "ResultPath": "$.notification",
+      "Next": "OrderFailed"
+    },
+    "sns:NotifyOrderApproveException": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "Message": { "order_id.$" : "$.order_id", "fail.$" : "$.fail" },
+        "TopicArn": "${mySagaTopic}"
+      },
+      "ResultPath": "$.notification",
+      "Next": "OrderFailed"
+    },
+    "sns:NotifyOrderFailException": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "Message": { "order_id.$" : "$.order_id", "error.$" : "$.error" },
+        "TopicArn": "${mySagaTopic}"
+      },
+      "ResultPath": "$.notification",
+      "Next": "OrderFailed"
+    },
+    "sns:NotifyCreditPaymentException": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "Message.$": "$",
+        "TopicArn": "${mySagaTopic}"
+      },
+      "ResultPath": "$.notification",
+      "Next": "OrderFailed"
+    },
+    "sns:NotifyReleaseInventoryException": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "Message.$": "$",
+        "TopicArn": "${mySagaTopic}"
+      },
+      "ResultPath": "$.notification",
+      "Next": "OrderFailed"
+    }
+  }
+}
