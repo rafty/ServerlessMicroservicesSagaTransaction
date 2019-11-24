@@ -59,7 +59,8 @@ def lambda_handler(event, context):
         save_order(order_event)
         test_state_machine(order_event)
 
-        logger.info('OrderCreate() event: {}'.format(order_event))
+        logger.info('OrderCreated APPROVED_PENDING '
+                    'event: {}'.format(order_event))
         return order_event
 
     except AlreadyRunning as e:
