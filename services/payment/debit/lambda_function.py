@@ -44,7 +44,7 @@ def payment_item(order_event):
     return payment
 
 
-def save_payment(order_event):
+def debit_payment(order_event):
     logger.info('save: {}'.format(order_event))
     try:
         payment = payment_item(order_event)
@@ -66,7 +66,8 @@ def lambda_handler(event, context):
     order_event = extract_order(event)
 
     try:
-        payment = save_payment(order_event)
+
+        payment = debit_payment(order_event)
 
         order_event = payment_attributes(order_event, payment)
 

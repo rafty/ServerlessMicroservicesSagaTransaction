@@ -77,33 +77,34 @@ Resources:
       Layers:
         - !Ref LambdaLayerSaga
 
-#  OrderApproveFunction:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      FunctionName: OrderApproveFunction
-#      Description: OrderApproveFunction
-#      Timeout: 200
-#      Handler: lambda_function.lambda_handler
-#      Runtime: python3.7
-#      Role: !GetAtt LambdaRole.Arn
-#      CodeUri: services/order/approve/
-#      Tracing: Active
-#      Layers: !Ref LambdaLayerSaga
-#
-#  OrderRejectFunction:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      FunctionName: OrderRejectFunction
-#      Description: OrderRejectFunction
-#      Timeout: 200
-#      Handler: lambda_function.lambda_handler
-#      Runtime: python3.7
-#      Role: !GetAtt LambdaRole.Arn
-#      CodeUri: services/order/reject/
-#      Tracing: Active
-#      Layers: !Ref LambdaLayerSaga
-#
-#
+  OrderApproveFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: OrderApproveFunction
+      Description: OrderApproveFunction
+      Timeout: 200
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: services/order/approve/
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
+
+  OrderRejectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: OrderRejectFunction
+      Description: OrderRejectFunction
+      Timeout: 200
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: services/order/reject/
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
+
 ##  OrderNotifyFunction:
 ##    Type: AWS::Serverless::Function
 ##    Properties:
@@ -370,8 +371,8 @@ Resources:
                 - lambda:InvokeFunction
               Resource:
                 - !GetAtt OrderCreateFunction.Arn
-#                - !GetAtt myOrderApproveFunction.Arn
-#                - !GetAtt myOrderFailFunction.Arn
+                - !GetAtt OrderApproveFunction.Arn
+                - !GetAtt OrderRejectFunction.Arn
                 - !GetAtt PaymentDebitFunction.Arn
 #                - !GetAtt myPaymentCreditFunction.Arn
                 - !GetAtt InventoryReserveFunction.Arn
@@ -411,6 +412,18 @@ Resources:
                   "Comment": "Order Create",
                   "Type": "Task",
                   "Resource": "${OrderCreateFunction.Arn}",
+                  "Catch": [
+                    {
+                      "ErrorEquals": ["AlreadyRunning"],
+                      "ResultPath": "$.error",
+                      "Next": "OrderSucceeded"
+                    },
+                    {
+                      "ErrorEquals": ["ErrorOrderCreate"],
+                      "ResultPath": "$.error",
+                      "Next": "OrderReject"
+                    }
+                  ],
                   "Next": "PaymentDebit"
                 },
                 "PaymentDebit": {
@@ -423,10 +436,56 @@ Resources:
                   "Comment": "Inventory Reserve",
                   "Type": "Task",
                   "Resource": "${InventoryReserveFunction.Arn}",
+                  "Next": "OrderApprove"
+                },
+                "OrderApprove": {
+                  "Comment": "Order Approve",
+                  "Type": "Task",
+                  "Resource": "${OrderApproveFunction.Arn}",
                   "Next": "OrderSucceeded"
+                },
+                "OrderReject": {
+                  "Comment": "Order reject",
+                  "Type": "Task",
+                  "Resource": "${OrderRejectFunction.Arn}",
+                  "Retry": [{
+                    "ErrorEquals": ["States.TaskFailed"],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 2.0
+                  }],
+                  "Catch": [{
+                    "ErrorEquals": ["ErrorOrderReject"],
+                    "ResultPath": "$.fail",
+                    "Next": "sns:NotifyOrderException"
+                  }],
+                  "Next": "sns:NotifyOrderFail"
+                },
+                "sns:NotifyOrderFail": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "Parameters": {
+                    "Message": { "order_id.$" : "$.order_id", "cause.$" : "$.cause" },
+                    "TopicArn": "${SagaTopic}"
+                  },
+                  "ResultPath": "$.notification",
+                  "Next": "OrderFailed"
+                },
+                "sns:NotifyOrderException": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "Parameters": {
+                    "Message": { "order_id.$" : "$.order_id", "error.$" : "$.error" },
+                    "TopicArn": "${SagaTopic}"
+                  },
+                  "ResultPath": "$.notification",
+                  "Next": "OrderFailed"
                 },
                 "OrderSucceeded": {
                   "Type": "Succeed"
+                },
+                "OrderFailed": {
+                  "Type": "Fail"
                 }
               }
             }
@@ -779,4 +838,5 @@ Resources:
 ##              }
 ##            }
 #
+# TODO SNS DeadLetterQueue 対応 SQS対応でない
 

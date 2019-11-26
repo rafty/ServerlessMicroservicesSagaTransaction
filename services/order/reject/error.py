@@ -4,7 +4,7 @@ Errors for StateMachine Catch.
 """
 
 
-class ErrorOrderApprove(Exception):
+class ErrorOrderReject(Exception):
     pass
 
 

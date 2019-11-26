@@ -34,7 +34,7 @@ def inventory_item(order_event):
     return inventory
 
 
-def save_inventory(order_event):
+def reserve_inventory(order_event):
     inventory = inventory_item(order_event)
 
     try:
@@ -66,7 +66,7 @@ def lambda_handler(event, context):
     order_event = extract_order(event)
 
     try:
-        inventory = save_inventory(order_event)
+        inventory = reserve_inventory(order_event)
 
         test_state_machine(order_event)
 

@@ -17,3 +17,4 @@ class Order(Model):
 
     order_id = UnicodeAttribute(hash_key=True)
     order_status = UnicodeAttribute()
+    cause = UnicodeAttribute(null=True)

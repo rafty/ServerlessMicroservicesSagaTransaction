@@ -29,7 +29,7 @@ def order_item(order_event):
         raise e
 
 
-def save_order(order_event):
+def create_order(order_event):
     try:
         order = order_item(order_event)
         order.save(
@@ -56,12 +56,13 @@ def lambda_handler(event, context):
     order_event = extract_event(event)
 
     try:
-        save_order(order_event)
+        create_order(order_event)
         test_state_machine(order_event)
 
         logger.info('OrderCreated APPROVED_PENDING '
                     'event: {}'.format(order_event))
-        return order_event
+
+        raise ErrorOrderCreate
 
     except AlreadyRunning as e:
         raise e
