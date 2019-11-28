@@ -176,21 +176,46 @@ Resources:
         - !Ref LambdaLayerSaga
 
 
-#
-#  TestSfnFunction:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      FunctionName: TestSfnFunction
-#      Description: TestSfnFunction
-#      Timeout: 300
-#      Handler: test.lambda_handler
-#      Runtime: python3.7
-#      Role: !GetAtt LambdaRole.Arn
-#      CodeUri: test/lambda/
-#      Tracing: Active
-#      Layers: !Ref LambdaLayerSaga
-#
+  OrderRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: OrderRequestFunction
+      Description: OrderRequestFunction
+      Timeout: 200
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: services/order/request/
+      Environment:
+        Variables:
+          ORDER_SAGA_STATE_MACHINE_ARN: !Ref SagaStateMachine
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
+      Events:
+        HttpPost:
+          Type: Api
+          Properties:
+            Path: /order
+            Method: post
 
+
+# ---------------------------------------------------------------
+#  E2E Test for the state transition of StateMachine.
+# ---------------------------------------------------------------
+  TestSfnFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TestSfnFunction
+      Description: TestSfnFunction
+      Timeout: 300
+      Handler: test.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: test/lambda/
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
 
 
 # ---------------------------------------------------------------
@@ -466,6 +491,13 @@ Resources:
                   "Comment": "Order Approve",
                   "Type": "Task",
                   "Resource": "${OrderApproveFunction.Arn}",
+                  "Catch": [
+                    {
+                      "ErrorEquals": ["ErrorOrderUpdate", "ErrorOrderApprove"],
+                      "ResultPath": "$.fail",
+                      "Next": "sns:NotifyOrderApproveException"
+                    }
+                  ],
                   "Next": "OrderSucceeded"
                 },
                 "OrderReject": {
@@ -534,6 +566,16 @@ Resources:
                   "Resource": "arn:aws:states:::sns:publish",
                   "Parameters": {
                     "Message": { "order_id.$" : "$.order_id", "error.$" : "$.error" },
+                    "TopicArn": "${SagaTopic}"
+                  },
+                  "ResultPath": "$.notification",
+                  "Next": "OrderFailed"
+                },
+                "sns:NotifyOrderApproveException": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "Parameters": {
+                    "Message": { "order_id.$" : "$.order_id", "fail.$" : "$.fail" },
                     "TopicArn": "${SagaTopic}"
                   },
                   "ResultPath": "$.notification",
@@ -917,4 +959,3 @@ Resources:
 ##            }
 #
 # TODO SNS DeadLetterQueue 対応 SQS対応でない
-

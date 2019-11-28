@@ -40,7 +40,7 @@ def payment_item(order_event):
         payment_amount=order_total(order_event),
     )
 
-    payment = create_transaction(payment, "DEBIT")
+    payment = create_transaction(payment, "DEBITED")
     return payment
 
 

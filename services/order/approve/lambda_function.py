@@ -16,7 +16,7 @@ def extract_order(event):
 
 
 def approve_order(order_event):
-    status = 'Approved'
+    status = 'APPROVED'
     try:
         order = Order(order_event['order_id'])
         order.update(

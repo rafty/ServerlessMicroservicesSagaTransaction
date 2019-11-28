@@ -27,7 +27,7 @@ def get_payment_transaction(order_event):
     try:
         payment = Payment.order_id_index.query(
                         order_event['order_id'],
-                        Payment.transaction_type == 'DEBIT'
+                        Payment.transaction_type == 'DEBITED'
                       ).next()
         logger.info('payment_transaction: {}'.format(payment))
         return payment
@@ -56,7 +56,7 @@ def credit_item(payment):
         merchant_id=payment.merchant_id,
         payment_amount=payment.payment_amount
     )
-    payment = create_transaction(payment, 'CREDIT')
+    payment = create_transaction(payment, 'CREDITED')
     return payment
 
 

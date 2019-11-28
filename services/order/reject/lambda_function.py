@@ -16,7 +16,7 @@ def extract_order(event):
 
 
 def reject_order(order_event):
-    status = 'FAILED'
+    status = 'REJECTED'
     try:
         order = Order(order_event['order_id'])
         order.update(

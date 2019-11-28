@@ -30,7 +30,7 @@ def inventory_item(order_event):
         order_id=order_event['order_id'],
         order_items=order_event['items']
     )
-    inventory = create_transaction(inventory, "RESERVE")
+    inventory = create_transaction(inventory, "RESERVED")
     return inventory
 
 

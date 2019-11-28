@@ -22,7 +22,7 @@ def get_inventory_transaction(order):
     try:
         inventory = Inventory.order_id_index.query(
                             order['order_id'],
-                            Inventory.transaction_type == 'RESERVE'
+                            Inventory.transaction_type == 'RESERVED'
                         ).next()
 
         logger.info('query Inventory: '
@@ -53,7 +53,7 @@ def release_item(inventory):
         order_id=inventory.order_id,
         order_items=inventory.order_items
     )
-    inventory = create_transaction(inventory, 'RELEASE')
+    inventory = create_transaction(inventory, 'RELEASED')
     return inventory
 
 

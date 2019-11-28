@@ -4,12 +4,9 @@ Errors for StateMachine Catch.
 """
 
 
-class ErrorOrderUpdate(Exception):
+class ErrorOrderTransaction(Exception):
     pass
 
 
-class ErrorOrderApprove(Exception):
+class ErrorOrderProcess(Exception):
     pass
-
-
-
