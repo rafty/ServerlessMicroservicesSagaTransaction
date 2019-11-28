@@ -9,7 +9,6 @@ from model import Inventory
 from error import ErrorInventoryRelease, ErrorPaymentException
 from test import test_state_machine
 
-
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 patch_all()
