@@ -77,7 +77,8 @@ sample event
 これをDeadLetterQueueのような扱いとする
 
 ここから
-Queueのリソースを追加すること
+1. jsonを少し修正したので、E2Eテストの結果を確認する
+2. Queueのリソースを追加すること
 
 # How to Test
 
