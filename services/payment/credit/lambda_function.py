@@ -56,7 +56,7 @@ def credit_item(payment):
         merchant_id=payment.merchant_id,
         payment_amount=payment.payment_amount
     )
-    payment = create_transaction(payment, 'DEBIT')
+    payment = create_transaction(payment, 'CREDIT')
     return payment
 
 

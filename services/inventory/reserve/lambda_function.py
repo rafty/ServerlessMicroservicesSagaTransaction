@@ -30,7 +30,7 @@ def inventory_item(order_event):
         order_id=order_event['order_id'],
         order_items=order_event['items']
     )
-    inventory = create_transaction(inventory, "Reserve")
+    inventory = create_transaction(inventory, "RESERVE")
     return inventory
 
 
@@ -72,6 +72,9 @@ def lambda_handler(event, context):
 
         order_event = set_inventory_attributes(order_event, inventory)
         logger.info('InventoryReserve() event: {}'.format(order_event))
+
+        raise ErrorInventoryReserve
+
         return order_event
 
     except InventoryRanShort as e:

@@ -161,21 +161,21 @@ Resources:
       Layers:
         - !Ref LambdaLayerSaga
 
-#  myInventoryReleaseFunction:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      FunctionName: myInventoryReleaseFunction
-#      Description: myInventoryReleaseFunction
-#      Timeout: 200
-#      Handler: lambda_function.lambda_handler
-#      Runtime: python3.7
-#      Role: !GetAtt LambdaRole.Arn
-#      CodeUri: services/inventory/release/
-#      Tracing: Active
-#      Layers:
-#        - Fn::ImportValue: aws-lambda-layer-common-arn
-#
-#
+  InventoryReleaseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: InventoryReleaseFunction
+      Description: InventoryReleaseFunction
+      Timeout: 200
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: services/inventory/release/
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
+
+
 #
 #  TestSfnFunction:
 #    Type: AWS::Serverless::Function
@@ -376,7 +376,7 @@ Resources:
                 - !GetAtt PaymentDebitFunction.Arn
                 - !GetAtt PaymentCreditFunction.Arn
                 - !GetAtt InventoryReserveFunction.Arn
-#                - !GetAtt InventoryReleaseFunction.Arn
+                - !GetAtt InventoryReleaseFunction.Arn
         - PolicyName: SnsServiceIntegration
           PolicyDocument:
             Version: 2012-10-17
@@ -448,6 +448,18 @@ Resources:
                   "Comment": "Inventory Reserve",
                   "Type": "Task",
                   "Resource": "${InventoryReserveFunction.Arn}",
+                  "Catch": [
+                    {
+                      "ErrorEquals": ["InventoryRanShort"],
+                      "ResultPath": "$.error",
+                      "Next": "PaymentCredit"
+                    },
+                    {
+                      "ErrorEquals": ["ErrorInventoryReserve"],
+                      "ResultPath": "$.error",
+                      "Next": "InventoryRelease"
+                    }
+                  ],
                   "Next": "OrderApprove"
                 },
                 "OrderApprove": {
@@ -490,6 +502,23 @@ Resources:
                   }],
                   "Next": "OrderReject"
                 },
+                "InventoryRelease": {
+                  "Comment": "Inventory Release",
+                  "Type": "Task",
+                  "Resource": "${InventoryReleaseFunction.Arn}",
+                  "Retry": [{
+                    "ErrorEquals": ["States.ALL"],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 2.0
+                  }],
+                  "Catch": [{
+                    "ErrorEquals": ["ErrorInventoryRelease", "ErrorPaymentException"],
+                    "ResultPath": "$.fail",
+                    "Next": "sns:NotifyReleaseInventoryException"
+                  }],
+                  "Next": "PaymentCredit"
+                },
                 "sns:NotifyOrderFail": {
                   "Type": "Task",
                   "Resource": "arn:aws:states:::sns:publish",
@@ -511,6 +540,16 @@ Resources:
                   "Next": "OrderFailed"
                 },
                 "sns:NotifyCreditPaymentException": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "Parameters": {
+                    "Message.$": "$",
+                    "TopicArn": "${SagaTopic}"
+                  },
+                  "ResultPath": "$.notification",
+                  "Next": "OrderFailed"
+                },
+                "sns:NotifyReleaseInventoryException": {
                   "Type": "Task",
                   "Resource": "arn:aws:states:::sns:publish",
                   "Parameters": {

@@ -5,7 +5,6 @@ Inventory Table
 from pynamodb.models import Model
 from pynamodb.attributes import (
     UnicodeAttribute,
-    NumberAttribute,
     ListAttribute
 )
 from pynamodb.indexes import GlobalSecondaryIndex, AllProjection

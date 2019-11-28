@@ -43,7 +43,6 @@ $ aws cloudformation deploy \
     --output text \
     --parameter-overrides \
         NotifyEmail=$YOURMAILADDR
-    
 ```
 
 sample event
