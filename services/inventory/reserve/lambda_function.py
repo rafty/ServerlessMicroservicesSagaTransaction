@@ -72,9 +72,6 @@ def lambda_handler(event, context):
 
         order_event = set_inventory_attributes(order_event, inventory)
         logger.info('InventoryReserve() event: {}'.format(order_event))
-
-        raise ErrorInventoryReserve
-
         return order_event
 
     except InventoryRanShort as e:

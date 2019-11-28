@@ -88,9 +88,6 @@ def lambda_handler(event, context):
                                    transaction_id=inventory.transaction_id)
         order_event['Inventory'] = json.dumps(release_transaction)
         logger.info('inventory release - _order_json: {}'.format(order_event))
-
-        raise ErrorPaymentException
-
         return order_event
 
     except ErrorInventoryRelease as e:
