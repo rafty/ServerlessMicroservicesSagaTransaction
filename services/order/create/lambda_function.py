@@ -62,7 +62,8 @@ def lambda_handler(event, context):
         logger.info('OrderCreated APPROVED_PENDING '
                     'event: {}'.format(order_event))
 
-        raise ErrorOrderCreate
+        # raise ErrorOrderCreate
+        return order_event
 
     except AlreadyRunning as e:
         raise e

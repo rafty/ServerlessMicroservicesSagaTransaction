@@ -133,19 +133,19 @@ Resources:
       Layers:
         - !Ref LambdaLayerSaga
 
-#  myPaymentCreditFunction:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      FunctionName: myPaymentCreditFunction
-#      Description: myPaymentCreditFunction
-#      Timeout: 200
-#      Handler: lambda_function.lambda_handler
-#      Runtime: python3.7
-#      Role: !GetAtt LambdaRole.Arn
-#      CodeUri: services/payment/credit/
-#      Tracing: Active
-#      Layers:
-#        - Fn::ImportValue: aws-lambda-layer-common-arn
+  PaymentCreditFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PaymentCreditFunction
+      Description: PaymentCreditFunction
+      Timeout: 200
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      CodeUri: services/payment/credit/
+      Tracing: Active
+      Layers:
+        - !Ref LambdaLayerSaga
 
   InventoryReserveFunction:
     Type: AWS::Serverless::Function
@@ -374,9 +374,9 @@ Resources:
                 - !GetAtt OrderApproveFunction.Arn
                 - !GetAtt OrderRejectFunction.Arn
                 - !GetAtt PaymentDebitFunction.Arn
-#                - !GetAtt myPaymentCreditFunction.Arn
+                - !GetAtt PaymentCreditFunction.Arn
                 - !GetAtt InventoryReserveFunction.Arn
-#                - !GetAtt myInventoryReleaseFunction.Arn
+#                - !GetAtt InventoryReleaseFunction.Arn
         - PolicyName: SnsServiceIntegration
           PolicyDocument:
             Version: 2012-10-17
@@ -430,6 +430,18 @@ Resources:
                   "Comment": "Payment Debit",
                   "Type": "Task",
                   "Resource": "${PaymentDebitFunction.Arn}",
+                  "Catch": [
+                    {
+                      "ErrorEquals": ["DebitLimitExceeded"],
+                      "ResultPath": "$.error",
+                      "Next": "OrderReject"
+                    },
+                    {
+                      "ErrorEquals": ["ErrorPaymentDebit"],
+                      "ResultPath": "$.error",
+                      "Next": "PaymentCredit"
+                    }
+                  ],
                   "Next": "InventoryReserve"
                 },
                 "InventoryReserve": {
@@ -461,6 +473,23 @@ Resources:
                   }],
                   "Next": "sns:NotifyOrderFail"
                 },
+                "PaymentCredit": {
+                  "Comment": "Payment credit",
+                  "Type": "Task",
+                  "Resource": "${PaymentCreditFunction.Arn}",
+                  "Retry": [{
+                    "ErrorEquals": ["States.TaskFailed"],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 2.0
+                  }],
+                  "Catch": [{
+                    "ErrorEquals": ["ErrorPaymentCredit", "ErrorPaymentException"],
+                    "ResultPath": "$.fail",
+                    "Next": "sns:NotifyCreditPaymentException"
+                  }],
+                  "Next": "OrderReject"
+                },
                 "sns:NotifyOrderFail": {
                   "Type": "Task",
                   "Resource": "arn:aws:states:::sns:publish",
@@ -476,6 +505,16 @@ Resources:
                   "Resource": "arn:aws:states:::sns:publish",
                   "Parameters": {
                     "Message": { "order_id.$" : "$.order_id", "error.$" : "$.error" },
+                    "TopicArn": "${SagaTopic}"
+                  },
+                  "ResultPath": "$.notification",
+                  "Next": "OrderFailed"
+                },
+                "sns:NotifyCreditPaymentException": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "Parameters": {
+                    "Message.$": "$",
                     "TopicArn": "${SagaTopic}"
                   },
                   "ResultPath": "$.notification",

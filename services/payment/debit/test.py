@@ -12,3 +12,5 @@ def test_state_machine(order_event):
         raise ErrorPaymentDebit('testing scenario')
     if 'PD3-' in order_event['order_id']:
         raise Exception('testing scenario')
+
+

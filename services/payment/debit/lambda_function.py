@@ -45,7 +45,6 @@ def payment_item(order_event):
 
 
 def debit_payment(order_event):
-    logger.info('save: {}'.format(order_event))
     try:
         payment = payment_item(order_event)
         payment.save()
