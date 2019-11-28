@@ -73,8 +73,11 @@ sample event
 }
 ```
 
+サンプルにはsns:NotifyXXXXXXXXExceptionのTopic通知　-> SQSをいれている
+これをDeadLetterQueueのような扱いとする
 
-
+ここから
+Queueのリソースを追加すること
 
 # How to Test
 
@@ -94,7 +97,5 @@ $ aws lambda invoke \
     response.json
 ```
 
-ここから
-Test ⑤番目から確認
-その次はStateMachineJsonに漏れがないか確認
+
 

@@ -72,8 +72,8 @@ PREFIX_EXCEPTION_LIST = [
     'IRS1-PC1-',
     'PD2-PC1-',
     'PD1-PC1-',
-    'PD1-OF1-',
-    'PD1-OF2-'
+    'PD1-OR1-',
+    'PD1-OR2-'
 ]
 
 
