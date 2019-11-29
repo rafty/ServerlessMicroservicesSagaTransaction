@@ -105,19 +105,6 @@ Resources:
       Layers:
         - !Ref LambdaLayerSaga
 
-##  OrderNotifyFunction:
-##    Type: AWS::Serverless::Function
-##    Properties:
-##      FunctionName: OrderNotifyFunction
-##      Description: OrderNotifyFunction
-##      Timeout: 200
-##      Handler: lambda_function.lambda_handler
-##      Runtime: python3.7
-##      Role: !GetAtt LambdaRole.Arn
-##      CodeUri: services/order/x-notify/
-##      Tracing: Active
-##      Layers:
-##        - Fn::ImportValue: aws-lambda-layer-common-arn
 
   PaymentDebitFunction:
     Type: AWS::Serverless::Function
@@ -302,7 +289,6 @@ Resources:
 #  AWS SNS
 # ---------------------------------------------------------------
 
-
   SagaTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -311,59 +297,37 @@ Resources:
       Subscription:
         - Endpoint: !Ref NotifyEmail
           Protocol: email
-#        - Endpoint: !GetAtt SagaQueue.Arn
-#          Protocol: sqs
-#        - Endpoint: !GetAtt OrderNotifyFunction.Arn
-#          Protocol: services
-#
-##  OrderNotifyLambdaPermission:
-##    Type: AWS::Lambda::Permission
-##    Properties:
-##      Principal: sns.amazonaws.com
-##      SourceArn: !Ref SagaTopic
-##      Action: services:InvokeFunction
-##      FunctionName: !GetAtt OrderNotifyFunction.Arn
-
-#  ________  ________   ________
-# |\   ____\|\   __  \ |\   ____\
-# \ \  \___|\ \  \|\  \\ \  \___|_
-#  \ \_____  \ \  \\\  \\ \_____  \
-#   \|____|\  \ \  \\\  \\|____|\  \
-#     ____\_\  \ \_____  \ ____\_\  \
-#    |\_________\|___| \__\\_________\
-#    \|_________|     \|__\|_________|
+        - Endpoint: !GetAtt SagaQueue.Arn
+          Protocol: sqs
 
 
-#  SagaQueuePolicy:
-#    Type: AWS::SQS::QueuePolicy
-#    Properties:
-#      Queues:
-#        - !Ref SagaQueue
-#      PolicyDocument:
-#        Version: 2012-10-17
-#        Statement:
-#          - Sid: AllowSendMessage
-#            Effect: Allow
-#            Principal:
-#              AWS: "*"
-#            Action:
-#            - sqs:SendMessage
-#            Resource: !GetAtt SagaQueue.Arn
-#            Condition:
-#              ArnEquals:
-#                'aws:SourceArn': !Ref SagaTopic
+# ---------------------------------------------------------------
+#  AWS SQS
+# ---------------------------------------------------------------
 
-#  SagaQueue:
-#    Type: AWS::SQS::Queue
-#    Properties:
-#      QueueName: SagaQueue
-#      Tags:
-#        - Key: project
-#          Value: e-commerce
-#        - Key: role
-#          Value: Payment
-#        - Key: environment
-#          Value: dev
+  SagaQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref SagaQueue
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: SendMessage
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action:
+            - sqs:SendMessage
+            Resource: !GetAtt SagaQueue.Arn
+            Condition:
+              ArnEquals:
+                'aws:SourceArn': !Ref SagaTopic
+
+  SagaQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: SagaDeadLetterQueue
 
 
 # ---------------------------------------------------------------
@@ -411,15 +375,6 @@ Resources:
                 - sns:Publish
               Resource:
                 - !Ref SagaTopic
-#        - PolicyName: SqsServiceIntegration
-#          PolicyDocument:
-#            Version: 2012-10-17
-#            Statement:
-#            - Effect: Allow
-#              Action:
-#                - sqs:SendMessage
-#              Resource:
-#                - !GetAtt SagaQueue.Arn
 
 
   SagaStateMachine:
@@ -498,7 +453,7 @@ Resources:
                       "Next": "sns:NotifyOrderApproveException"
                     }
                   ],
-                  "Next": "OrderSucceeded"
+                  "Next": "sns:NotifyOrderSuccess"
                 },
                 "OrderReject": {
                   "Comment": "Order reject",
@@ -550,6 +505,16 @@ Resources:
                     "Next": "sns:NotifyReleaseInventoryException"
                   }],
                   "Next": "PaymentCredit"
+                },
+                "sns:NotifyOrderSuccess": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::sns:publish",
+                  "Parameters": {
+                    "Message": { "order_id.$" : "$.order_id"},
+                    "TopicArn": "${SagaTopic}"
+                  },
+                  "ResultPath": "$.notification",
+                  "Next": "OrderSucceeded"
                 },
                 "sns:NotifyOrderFail": {
                   "Type": "Task",
@@ -609,6 +574,3 @@ Resources:
                 }
               }
             }
-
-# TODO NotifyXXXExceptionにはSNS通知した後SQSに入れる。これはDeadLetterQueueと同じように扱う
-# TODO SNS DeadLetterQueue 対応 SQS対応でない
