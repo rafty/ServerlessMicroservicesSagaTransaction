@@ -1,39 +1,58 @@
 # Serverless Microserviecs: Saga Transaction
 
+Implementation of Serverless Microservices Transaction using AWS Step Functions.
 
+AWS Services Relationship
 ![](./images/SagaDesignPattern.svg)
+
+State Machine  
 ![](./images/statemachine.png)
 
-# Usage
+## Deploying
+
+### Requirements
+- AWS Account
+- Python 3.7 or greater
+- AWS CLI latest
+
+### Use
 - AWS Lambda
-- AWS Stepfunctions
+- AWS Step Functions
 - Amazon DynamoDB
 - AWS SNS
 - AWS SQS
+- Amazon API Gateway
+- AWS IAM
 - AWS CloudFormation
 
-# How to Use
+# Instructions
 
-Python3が動作する環境で以下のコマンドを実行してください。
+These are the deployment steps until the full implementation is complete.:
 
+1. Clone this repository locally.
+2. Execute the following command in a terminal running python3.
+
+__Set variables__  
 ```bash
 $ PROJECTNAME=serverless-saga
 $ YOURNAME=yagita
-$ YOURMAILADDR=yagita.takashi@gmail.com
+$ YOURMAILADDR=xxxxxx@xxx.com
 ```
 
-lambdaをuploadするバケット
+__Create a bucket to upload lambda functions.__
 ```bash
 $ aws s3 mb s3://$YOURNAME-$PROJECTNAME
 ```
 
+__Install python package.__
 ```bash
 $ cd lambda/layer/python
 $ pip install -r requirements.txt -t .
+$ cd ../../..
 ```
 
+__Upload local artifacts__
 ```bash
-$ cd ../../..
 $ aws cloudformation package \
     --template-file saga-sfn.yml \
     --s3-bucket $YOURNAME-$PROJECTNAME \
@@ -49,7 +68,17 @@ $ aws cloudformation deploy \
         NotifyEmail=$YOURMAILADDR
 ```
 
-sample event
+# How to Test
+
+```bash
+$ aws lambda invoke \
+    --function-name TestSfnFunction \
+    --region ap-northeast-1 \
+    --payload '{}' \
+    response.json
+```
+
+__sample event data__
 ```json
 {
   "order_id": "40063fe3-56d9-4c51-b91f-71929834ce03",
@@ -76,31 +105,3 @@ sample event
   ]
 }
 ```
-
-サンプルにはsns:NotifyXXXXXXXXExceptionのTopic通知　-> SQSをいれている
-これをDeadLetterQueueのような扱いとする
-
-ここから
-1. jsonを少し修正したので、E2Eテストの結果を確認する
-2. Queueのリソースを追加すること
-
-# How to Test
-
-
-```bash
-$ curl \
--X POST \
--d "{\"order_id\": \"40063fe3-56d9-4c51-b91f-71929834ce03\",\"order_date\": \"2018-10-19T10:50:16+08:00\",\"customer_id\": \"8d04ea6f-c6b2-4422-8550-839a16f01feb\",\"items\": [{\"item_id\": \"123\",\"qty\": 1.0,\"description\": \"Cart item 1\",\"unit_price\": 19.99},{\"item_id\": \"234\",\"qty\": 1.0,\"description\": \"Cart item 2\",\"unit_price\": 23.98},{\"item_id\": \"345\",\"qty\": 2.0,\"description\": \"Cart item 3\",\"unit_price\": 6.50}]}" \
-https://t6e4p0u114.execute-api.ap-northeast-1.amazonaws.com/Stage/order
-```
-
-```bash
-$ aws lambda invoke \
-    --function-name TestSfnFunction \
-    --region ap-northeast-1 \
-    --payload '{}' \
-    response.json
-```
-
-
-
